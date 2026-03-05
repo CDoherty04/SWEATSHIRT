@@ -1,6 +1,8 @@
 import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 import keyPairJson from "../keypair.json" with { type: "json" };
 import { SuiGrpcClient } from "@mysten/sui/grpc";
+import { Transaction } from "@mysten/sui/transactions";
+import { bcs } from "@mysten/sui/bcs";
 
 /**
  *
@@ -15,8 +17,8 @@ const PACKAGE_ID = `0x9603a31f4b3f32843b819b8ed85a5dd3929bf1919c6693465ad7468f97
 const VAULT_ID = `0x8d85d37761d2a4e391c1b547c033eb0e22eb5b825820cbcc0c386b8ecb22be33`;
 
 const suiClient = new SuiGrpcClient({
-	network: 'testnet',
-	baseUrl: 'https://fullnode.testnet.sui.io:443',
+  network: 'testnet',
+  baseUrl: 'https://fullnode.testnet.sui.io:443',
 });
 
 /**
@@ -37,32 +39,44 @@ const main = async () => {
    *
    * Create a new Transaction instance from the @mysten/sui/transactions module.
    */
+  const tx = new Transaction();
 
   /**
    * Task 2:
    *
    * Create a new key using the `key::new` function.
    */
+  const key = tx.moveCall({
+    target: `${PACKAGE_ID}::key::new`,
+  });
 
   /**
    * Task 3:
    *
    * Set the key code correctly using the `key::set_code` function.
    */
+  tx.moveCall({
+    target: `${PACKAGE_ID}::key::set_code`,
+    arguments: [key, tx.pure.u64(745223)],
+  });
 
   /**
    * Task 4:
    *
    * Use the key to withdraw the `SUI` coin from the vault using the `vault::withdraw` function.
    */
-  
+  const coin = tx.moveCall({
+    target: `${PACKAGE_ID}::vault::withdraw`,
+    typeArguments: ['0x2::sui::SUI'],
+    arguments: [tx.object(VAULT_ID), key],
+  });
 
   /**
    * Task 5:
    *
    * Transfer the `SUI` coin to your account.
    */
-
+  tx.transferObjects([coin], keypair.getPublicKey().toSuiAddress());
 
   /**
    * Task 6:
@@ -74,7 +88,17 @@ const main = async () => {
    * Resources:
    * - Observing transaction results: https://sdk.mystenlabs.com/typescript/transaction-building/basics#observing-the-results-of-a-transaction
    */
+  console.log("About to sign and execute transaction");
+  const result = await suiClient.signAndExecuteTransaction({ signer: keypair, transaction: tx });
+  console.log("Transaction signed and executed");
 
+  // Check transaction status
+  if (result.$kind === 'FailedTransaction') {
+    throw new Error(`Transaction failed: ${result.FailedTransaction.status.error?.message}`);
+  }
+
+  await suiClient.waitForTransaction({ result });
+  console.log(result);
 
   /**
    * Task 7: Run the script with the command below and ensure it works!
